@@ -1,0 +1,22 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Heladeria</title>
+</head>
+<body>
+    <h1>Heladeria curso Back end</h1>
+    <h2>Menu de la Heladeria</h2>
+    <ul>
+        {% for producto in productos_json %}
+            <li>
+                <strong>{{ producto.nombre }}</strong>: {{producto.precio}}
+            </li>
+        {% endfor %}
+    </ul>
+    <form action="{{url_for('auth.logout')}}" method="GET">
+        <button type="submit">Cerrar Sesion</button>
+    </form>
+</body>
+</html>
