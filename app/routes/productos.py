@@ -1,8 +1,9 @@
 from flask import Blueprint, request, jsonify, render_template
 from app.controllers.heladeria_controller import HeladeriaController
-from app.models.producto import Producto
+from app.models.producto import Producto, Copa, Malteada
 from app import db
 from app.auth.decorators import admin_required
+from flask_login import current_user
 
 productos_bp = Blueprint("productos", __name__)
 heladeria_controller = HeladeriaController()
@@ -18,8 +19,10 @@ def listar_productos():
         for p in productos
     ]
     
+    es_admin = current_user.is_authenticated and current_user.is_admin
+    
     print(productos_json)
-    return render_template("index.html", productos_menu = productos_json)
+    return render_template("index.html", productos_menu = productos, es_admin= es_admin)
 
 #Consultar un producto por ID
 @productos_bp.route("/<int:producto_id>", methods=["GET"])
@@ -27,7 +30,12 @@ def obtener_producto_por_id(producto_id):
     producto = Producto.query.get(producto_id)
     if not producto:
         return jsonify({"error": "producto no encontrado"}), 404
-    return jsonify({"id": producto.id, "nombre": producto.nombre, "precio": producto.precio_publico}), 200
+    return jsonify({
+        "id": producto.id, 
+        "nombre": producto.nombre, 
+        "precio": producto.precio_publico,
+        "stock": producto.stock
+        }), 200
 
 #Consultar producto por nombre
 @productos_bp.route("/buscar", methods=["GET"])
@@ -48,17 +56,37 @@ def obtener_calorias_producto(producto_id):
     if not producto:
         return jsonify({"error": "Producto no encontrado"}), 404
     
-    return jsonify({"id": producto.id, "nombre": producto.nombre, "calorias": producto.calorias}), 200
+    #Aqui verificar si el producto tiene ingredientes antes de calcular calorias
+    if not producto.ingredientes:
+        return jsonify({"error": "El producto no tiene ingredientes asociados"}), 400
+    
+    calorias = producto.calcular_calorias(producto.ingredientes)
+    return jsonify({
+        "id": producto.id, 
+        "nombre": producto.nombre, 
+        "calorias": calorias
+        }), 200
 
 
 #consultar rentabilidad de un producto
 @productos_bp.route("/<int:producto_id>/rentabilidad", methods=["GET"])
 def obtener_rentabilidad_producto(producto_id):
     producto = Producto.query.get(producto_id)
+    
     if not producto:
         return jsonify({"error": "Producto no encontrado"}), 404
-    rentabilidad = producto.precio_publico - producto.costo_produccion
-    return jsonify({"id": producto.id, "nombre": producto.nombre, "rentabilidad": rentabilidad}), 200
+    
+    if not producto.ingredientes:
+        return jsonify({
+            "error": "El producto no tiene ingredientes asociados"
+        }) , 400
+    
+    rentabilidad = producto.calcular_rentabilidad(producto.ingredientes)
+    return jsonify({
+        "id": producto.id, 
+        "nombre": producto.nombre, 
+        "rentabilidad": rentabilidad
+        }), 200
 
 
 # Consultar costo de produccion de un producto
@@ -67,7 +95,16 @@ def obtener_costo_produccion_producto(producto_id):
     producto = Producto.query.get(producto_id)
     if not producto:
         return jsonify({"error": "producto no encontrado"}), 400
-    return jsonify({"id": producto.id, "nombre": producto.nombre, "costo_produccion": producto.costo_produccion}), 200
+    
+    if not producto.ingredientes:
+        return jsonify({"error": "El producto no tiene ingredientes asociados"}), 400
+    
+    costo = producto.calcular_costo(producto.ingredientes)
+    return jsonify({
+        "id": producto.id, 
+        "nombre": producto.nombre, 
+        "costo_produccion": costo
+        }), 200
 
 # vender producto por id
 @productos_bp.route("/<int:producto_id>/vender", methods=["POST"])
@@ -113,20 +150,32 @@ def renovar_inventario_producto(producto_id):
 @productos_bp.route("/", methods=["POST"])
 @admin_required
 def agregar_producto():
-    data = request.get_json()
-    nombre = data.get("nombre")
-    precio = data.get("precio")
-    tipo = data.get("tipo")
-    extra = data.get("extra")
+    nombre = request.form.get("nombre")
+    precio = request.form.get("precio")
+    tipo = request.form.get("tipo")
+    stock = request.form.get("stock", 0)
     
-    if not nombre or not precio or not tipo or not extra:
+    if not nombre or not precio or not tipo:
         return jsonify({"error": "Faltan datos obligatorios"}), 400
     
-    try:
-        heladeria_controller.agregar_producto(nombre, precio, tipo, extra)
-        return jsonify({"mensaje": "Producto agregado exitosamente"}), 201
-    except ValueError as e:
-        return jsonify({"error": str(e)}), 400
+    if tipo not in ["Copa", "Malteada"]:
+        return jsonify({
+            "error": "Tipo de producto no valido"
+        }) , 400
+        
+    if tipo == "Copa":
+        producto = Copa(nombre = nombre, precio_publico=precio, tipo_vaso=data.get("tipo_vaso", "Vaso estandar"))
+    elif tipo == "Malteada":
+        producto = Malteada(nombre=nombre, precio_publico=precio, volumen=data.get("volumen", 500))
+    
+    producto.stock = stock
+    from app import db
+    db.session.add(producto)
+    db.session.commit()
+    
+    return jsonify({
+        "mensaje": "Producto agregado exitosamente"
+    }) , 201
     
 #ruta para vender los produtos
 @productos_bp.route("/vender", methods=["POST"])
@@ -149,7 +198,6 @@ def actualizar_producto(id):
     data = request.get_json()
     nombre = data.get("nombre")
     precio = data.get("precio")
-    tipo = data.get("tipo")
     extra = data.get("extra")
     
     producto = Producto.query.get(id)
@@ -161,17 +209,21 @@ def actualizar_producto(id):
         producto.nombre = nombre
     if precio:
         producto.precio_publico = precio
-    if tipo:
-        producto.tipo = tipo
-    if extra:
-        producto.extra = extra
+    
+    if isinstance(producto, Copa) and extra:
+        producto.tipo_vaso = extra
+    elif isinstance(producto, Malteada) and extra:
+        producto.volumen = extra
         
     try:
-        from app import db
         db.session.commit()
-        return jsonify({"mensaje": "Producto actualizado exitosamente"}), 200
+        return jsonify({
+            "mensaje": "Producto actualizado exitosamente"
+        }), 200
     except Exception as e:
-        return jsonify({"error": str(e)}), 500
+        return jsonify({
+            "error": str(e)
+        }) , 500
     
 
 @productos_bp.route("/<int:id>", methods=["DELETE"])

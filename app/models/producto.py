@@ -25,12 +25,14 @@ class Producto(db.Model):
     id = db.Column(db.Integer, primary_key=True, autoincrement=True)
     nombre = db.Column(db.String(255), nullable=False)
     precio_publico = db.Column(db.Float, nullable=False)
+    stock = db.Column(db.Integer, default=0, nullable=False)
     
     ingredientes = db.relationship("Ingrediente", secondary=producto_ingrediente, back_populates="productos")
     
-    def __init__(self, nombre, precio_publico):
+    def __init__(self, nombre, precio_publico, stock=0):
         self.nombre = nombre
         self.precio_publico = precio_publico
+        self.stock = stock
     
     def calcular_costo(self, ingredientes):
         raise NotImplementedError

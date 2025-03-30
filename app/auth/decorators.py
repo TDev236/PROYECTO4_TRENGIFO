@@ -7,7 +7,7 @@ def admin_required(f):
     def decorated_function(*args, **kwargs):
         if not current_user.is_authenticated or current_user.role != 'admin':
             flash("No autorizado", "danger")
-            return redirect(url_for('index'))
+            return redirect(url_for('heladeria.home'))
         return f(*args, **kwargs)
     return decorated_function
 
@@ -16,7 +16,7 @@ def empleado_required(f):
     def decorated_function(*args, **kwargs):
         if not current_user.is_authenticated or current_user.role not in ['admin', 'empleado']:
             flash("No autorizando", "danger")
-            return redirect(url_for('index'))
+            return redirect(url_for('heladeria.home'))
         return f(*args, **kwargs)
     return decorated_function
 
@@ -25,6 +25,6 @@ def cliente_required(f):
     def decorated_function(*args, **kwargs):
         if not current_user.is_authenticated or current_user.role not in ['admin', 'empleado', 'cliente']:
             flash("No autorizado", "danger")
-            return redirect(url_for('index'))
+            return redirect(url_for('heladeria.home'))
         return f(*args, **kwargs)
     return decorated_function
