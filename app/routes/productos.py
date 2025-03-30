@@ -12,13 +12,14 @@ heladeria_controller = HeladeriaController()
 @productos_bp.route("/", methods=["GET"])
 def listar_productos():
     productos = Producto.query.all()
+    print(productos)
     productos_json = [
         {"id": p.id, "nombre": p.nombre, "precio": p.precio_publico}
         for p in productos
     ]
     
     print(productos_json)
-    return render_template("index.html", productos_json = productos_json)
+    return render_template("index.html", productos_menu = productos_json)
 
 #Consultar un producto por ID
 @productos_bp.route("/<int:producto_id>", methods=["GET"])
